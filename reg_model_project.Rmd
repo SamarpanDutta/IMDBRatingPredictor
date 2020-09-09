@@ -1,0 +1,373 @@
+---
+title: "Modeling and prediction for movies"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(tidyr)
+```
+
+### Load data
+
+In this assignment we are going to use **Movies** dataset. The primary purpose of the study mentioned below is purely to gain hands-on experience on data modeling using multiple linear regression. As the authenticity of the data has not been verified, any outcome from this study should be used with caution.  
+
+```{r load-data}
+load("movies.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+
+To comment on generalizability we need to consider the data collection mechanism used. As specified in the codebook of the dataset, the included 651 movies are the result of random sampling from a population of all the movies released before 2016. Also if we give a glance at the data set, we can also see that the frequency of non-response for all the characteristics are close to zero. Hence we can safely conclude that any finding using this data can be generalized for the entire population.
+
+The next thing of concern is whether any causal conclusion can be drawn out of this study. Here the fact is that, the dataset has been originated out of an observational study and because of that we can't see the presence of any treatment or control group as like any other statistical experimental setup. Hence, the dataset can only be used to determine association between variables and should not be used to draw any causal conclusion.
+
+* * *
+
+## Part 2: Research question
+
+In this study we are interested in finding out what attributes make a movie earn a good rating. To do so, we will find out all the explanatory variables that are independent of each other and actively influences the response variable, which is here in this case rating of a movie. As the final outcome of the study we will try to determine a linear regression model, to predict rating for any unknown movie, given all the explanatory attributes.  
+
+The reason behind choosing this topic is, we wanted to predict rating of any movie that was released on or before 2016, but did not manage to secure their place in IMDB or Rotten Tomatoes database. Some of the possible reasons of not securing a place could be that it was a highly popular local movie in any regional dialect, which has not found place in an international community, or may be it was a local theatre that did not reach the global audience. In all these cases our model may predict a rating for the same given, all the explanatory attributes are present and known. 
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+To start with, let us first analyse how ratings are influenced by the below attributes.
+`best_pic_nom`,`best_pic_win`,`best_actor_win`,`best_actress_win`,`best_dir_win`,`top200_box`, because in our real life we often observe that these are the attibutes that determine popularity and ratings of a particular movie. (Please refer to the codebook for a detailed description of all these variables.)
+
+To do this, we will create a faceted plot, where horizontal axis will feature values of the above mentioned attributes, namely yes or no and the vertical axis will have three diferrent scores, namely, `audience_score`,`critics_score`,`imdb_rating`. For this we need to transform the data from wider to longer format.  
+
+From now onwards we will refer `audience_score`, `critics_score` and `imdb_rating` together as `scores`.
+
+```{r}
+movies_m <- movies %>% select(best_pic_nom,best_pic_win,best_actor_win,best_actress_win,best_dir_win,top200_box,imdb_rating,critics_score,audience_score)
+
+facet_data <- movies_m %>% 
+  pivot_longer(-c(imdb_rating,critics_score,audience_score), names_to = "attribute_name", values_to = "category") %>%
+  pivot_longer(-c(attribute_name,category), names_to = "score_name", values_to = "score")
+
+ggplot(data=facet_data, aes(x=category,y=score)) + geom_jitter() + facet_grid(score_name~attribute_name, scales="free", space="free_x")
+```
+
+From the above faceted plot the below mentioned observations are noteworthy.  
+
+1. `best_actor_win`, `best_actress_win` and `best_dir_win` does not have much influence on the ratings, as for these attributes the difference in mean scores between `yes` and `no` categories is very less.
+
+2. Considerable difference in mean scores across the categories is observed for `best_pic_nom`, `best_pic_win`, `top200_box`.
+
+3. For the attribute `top200_box`, if we look at the `yes` category, we can see the presence of a number of outliers. This means these are the movies which inspite of having secured a place in Top 200 box office has got comparatively lower score than expected.
+
+Now we will look at all the above facts by means of appropriate summary statistics. Here because of the presence of outliers, `median` will be the most suitable statistics to consider. But as we are dealing with regression using mean square line, we need to take into account `mean` to determine inclusivity of any attribute in the model.
+
+**scores ~ best_pic_win**
+
+```{r}
+movies %>% 
+  group_by(best_pic_win) %>% 
+  summarise(MeanImdbRating = mean(imdb_rating), MeanCriticsScore=mean(critics_score), MeanAudienceScore=mean(audience_score))
+```
+Here we can clearly observe a significant difference in the mean score between the two categories. 
+
+**scores ~ best_pic_nom**
+
+```{r}
+movies %>% 
+  group_by(best_pic_nom) %>% 
+  summarise(MeanImdbRating = mean(imdb_rating), MeanCriticsScore=mean(critics_score), MeanAudienceScore=mean(audience_score))
+```
+
+Here also a significant difference in the mean score between the two categories has been observed.
+
+**scores ~ top200_box**
+
+```{r}
+movies %>% 
+  group_by(top200_box) %>% 
+  summarise(MeanImdbRating = mean(imdb_rating), MeanCriticsScore=mean(critics_score), MeanAudienceScore=mean(audience_score))
+```
+
+Here again a considerable difference in the mean score is seen.
+
+**scores ~ best_actor_win**
+
+```{r}
+movies %>% 
+  group_by(best_actor_win) %>% 
+  summarise(MeanImdbRating = mean(imdb_rating), MeanCriticsScore=mean(critics_score), MeanAudienceScore=mean(audience_score))
+```
+
+Here not so significant difference is observed in the mean IMDB Ratings and the mean Audience Scores between the two categories. But the difference is signficant when it comes to critics_score.
+
+
+**scores ~ best_actress_win**
+
+```{r}
+movies %>% 
+  group_by(best_actress_win) %>% 
+  summarise(MeanImdbRating = mean(imdb_rating), MeanCriticsScore=mean(critics_score), MeanAudienceScore=mean(audience_score))
+```
+
+Here also, not so significant difference is observed in the mean IMDB Ratings and the mean Audience Scores between the two categories. But the difference is signficant when it comes to critics_score.
+
+**scores ~ best_dir_win**
+
+```{r}
+movies %>% 
+  group_by(best_dir_win) %>% 
+  summarise(MeanImdbRating = mean(imdb_rating), MeanCriticsScore=mean(critics_score), MeanAudienceScore=mean(audience_score))
+```
+
+the above observation is also true here.
+
+lastly let us try to determine whether runtime of a movie has any direct association with the rating, as often we tend to get bored while watching lengthy movies. For this we will try to look at the scatter plot.
+
+```{r}
+ggplot(data=movies, aes(x=runtime, y=imdb_rating)) + geom_point() + geom_smooth(method='lm')
+```
+
+here roughly a positive association has been observed.
+
+* * *
+
+## Part 4: Modeling
+
+Before jumping into the model specification, let us take a moment to define our response variables.
+Here in irder to quantify our rating, we have three different variables available, namely `imdb_rating`, `critics_score`, `audience_rating`. Now as `imdb_rating` is given out of 10, we are gong to scale it up so that it can be represented out of 100 and after that we will take average of this value, `critics_score` and `audience_score`.
+
+```{r}
+movies <- movies %>% mutate(score = (critics_score + audience_score + 10*imdb_rating)/3)
+```
+
+### Full Model:  
+
+Now our full model consists of the following variables,
+
+**explanatory variables:** `best_pic_nom`,`best_pic_win`,`best_dir_win`,`top200_box`, `runtime`,`best_actor_win`,`best_actress_win`
+
+**response variable:** `score` [score = (critics_score + audience_score + 10*imdb_rating)/3]
+
+### Excluded Variables: 
+
+We will exclude `imdb_num_votes`, as from the below plot we can see, for certain high rated movies also, the total number of votes tend to be much close to zero.
+
+```{r}
+ggplot(data=movies,aes(x=imdb_num_votes,y=score)) + geom_point()
+```
+
+### Model Selection:  
+
+Here we are interested in a more reliable prediction and hence we will go for Adjusted R-square based backward selection strategy. To do so we will first start with full model and then in each iteration our aim will be to remove one variable for which the adjusted-R-square value becomes higher than the previous. We will stop the process when it is not possible for us to increase adjusted-R-square anymore, by removing any of the variable.
+
+Let us first start with calculating adjusted-R-square for the full model.
+
+```{r}
+summary(lm(score ~ best_pic_nom + best_pic_win + best_dir_win + top200_box + runtime + best_actor_win + best_actress_win, data = movies))$adj.r.squared
+```
+
+Now we will remove one variable to arrive at a higher adjusted-R-square value.
+
+```{r}
+all_var <- c("score","best_pic_nom","best_pic_win","best_dir_win","top200_box","runtime","best_actor_win","best_actress_win")
+res_var = all_var[[1]]
+R2 <- c()
+exp_var_list = all_var[-1]
+for(i in 1:(length(all_var)-1))
+{
+  exp_var=exp_var_list[-i]
+  mformula <- paste(as.character(res_var),"~",paste(exp_var,collapse = ' + '))
+  R2[i] <- summary(lm(mformula,data=movies))$adj.r.squared
+}
+
+data.frame(removed_var=exp_var_list,adjusted_R_Square=R2)
+```
+
+Here we will remove `best_pic_win` and proceed for the next iteration.
+
+```{r}
+all_var <- all_var[all_var != "best_pic_win"]
+res_var=all_var[[1]]
+R2 <- c()
+exp_var_list=all_var[-1]
+for(i in 1:(length(all_var)-1))
+{
+  exp_var=exp_var_list[-i]
+  mformula <- paste(as.character(res_var),"~",paste(exp_var,collapse = ' + '))
+  R2[i] <- summary(lm(mformula,data=movies))$adj.r.squared
+}
+
+data.frame(removed_var=exp_var_list,adjusted_R_Square=R2)
+```
+
+In the next iteration, we are going to remove `best_actress_win`
+
+```{r}
+all_var <- all_var[all_var != "best_actress_win"]
+res_var=all_var[[1]]
+R2 <- c()
+exp_var_list=all_var[-1]
+for(i in 1:(length(all_var)-1))
+{
+  exp_var=exp_var_list[-i]
+  mformula <- paste(as.character(res_var),"~",paste(exp_var,collapse = ' + '))
+  R2[i] <- summary(lm(mformula,data=movies))$adj.r.squared
+}
+
+data.frame(removed_var=exp_var_list,adjusted_R_Square=R2)
+```
+
+
+Now we could not see any more variable which may lead to an increased adjusted-R-square.
+
+let us look at the summary of our final model.
+
+```{r}
+model <- lm(score ~ best_pic_nom + best_dir_win + top200_box + runtime + best_actor_win, data = movies)
+summary(model)
+```
+
+Here we can see that the predictive power of our model is extremely low. To better understand the reason let us look at the model diagnostics.
+
+### Model Diagnostics:
+
+In order to determine whether the designed model conforms to the condition for validity, we need to ensure that the model satisfies the four below mentioned criteria.
+
+#### linear relationships between numerical x and y:
+
+In the designed model, our only numerical explanatory variable is `runtime`. Hence, we have to look at the plot of residuals vs `runtime`.
+
+```{r}
+ggplot(data=model,aes(x=runtime,y=.resid)) + geom_point()
+```
+
+Here, we are unable to see a complete random scatter around zero, rather we can see presence of a fan shaped pattern as we proceed towards positive x-axis.
+
+#### nearly normal residuals:
+
+For the linear regression to be valid, the residuals should be nearly normally distributed. This we can check by means of either a histogram or a qqplot. 
+
+```{r}
+ggplot(data=model, aes(x=.resid)) + geom_histogram(binwidth = 1)
+
+qqnorm(model$residuals)
+qqline(model$residuals)
+```
+
+From the above two diagram we can see that the residuals are nearly normally distributed, though deviation from the normal line has been observed for higher and lower values of residuals in the qqplot.
+
+#### constant variability of residuals:
+
+In order to check for this condition, we need to plot residuals against the fitted value. Here we sould expect a band of constant width around zero.
+
+```{r}
+ggplot(data=model,aes(x=.fitted,y=.resid)) + geom_point()
+```
+
+But looking at the diagram above we can see presence of a fan-shaped structure, which signifies that variability of the residuals is not constant.
+
+#### independence of residuals:
+
+Here we need to check for patterns in the residuals as we plot them in the order they have appeared. If there happens to be a pattern or we know that the data has arised out of any time series analysis, this condition may not hold good.
+
+```{r}
+plot(model$residuals)
+```
+
+Here, we could not see presence of any pattern and hence we can safely conclude that the residuals are independent.
+
+### Interpretation of Model Coefficients:
+
+let us revisit the sumary of the designed model.
+
+```{r}
+summary(model)
+```
+We can see that for each of the categorical variables namely, `best_pic_nom`, `best_pic_win`, `top200_box` and `best_actor_win` the reference level has been set as category `no`. 
+
+hence interpretation of their coefficient should be as follows.
+
+**best_pic_nomyes:** All else held contant a movie with a nomination of best picture on an average will recieve 17.53 point higher rating than those which are not nominated for the best picture award.
+
+**best_dir_winyes:** All else held constant a movie featuring a 'best director award' winning director will recieve on an average 5.075 point higher rating than those movies which do not involve a director who has won this award.
+
+**top200_boxyes:** All else held constant a movie which has been featured in Top 200 Box Office list will recieve on an average 8.18 point higher rating than those which are not in the Top 200 Box office list.
+
+**best_actor_winyes:** All else held constant a movie featuring a actor who has won a best actor award will recieve on an average 1.79 point lower rating thanthose which does not involve an award wining actor. This is something as opposed to what we usually get to see in our real life.
+
+We have only one numerical variable namely, `runtime`. The interpretation of its coefficient is,  
+
+**runtime:** All else held constant for every minute increase in runtime a movie rating on an average will increase by 0.1369 point.
+
+Finally for the intercept,  
+**intercept:** a movie which has not received best picture nomination, does not involve a director who has received a best director award, has not secured a place in Top 200 Box office list, does not involve an actor who has won a best actor award and has a runtime of zero minute, will have a score of 46.28 out of 100. This is not possibe practically. The significance of this is just to have an y-ward displacement of the regression line.
+
+All the standard error signifies standard deviation of the sample statistics (which is in this case the coefficient under consideration) in the sampling distribution of 651 sample out of the entire population of movies from the year 2016.
+
+All the t-scores are the measures of quantile, under the assumption that null hypothesis is true i.e. the corresponding coefficient is zero. In case of explanatory variables this null hypothesis signifies that, given all other variables, the response variable under consideration does not seem to have any correlation with the aforementioned explanatory variable. In case of intercept the null hypothesis signifies that the measure of intercept is zero.
+
+Finally, as always the p-value is the probablity of obtaining an observed or stronger estimate, given null hypothesis is true. With this we can determine how significant a particular explanatory variable is in predicting the value of the response variable.
+
+
+* * *
+
+## Part 5: Prediction
+
+Before jumping into the prediction using the above model, the first and foremost thing to consider is that, the predictive power of the model is very low, lesser than 10%. In that case we should be cautious in using any predictions originated out of this model.
+
+For prediction we are going to use the following information for the movie *Paterson[^1]*.
+
+Runtime: 115 minutes
+best_pic_nom: `No`
+best_dir_win: `No`
+best_actor_win: `No`
+top200_box: `No`
+
+Ratings and scores as listed in IMDB and RottenTomatoes are,
+
+Critics Score : 96
+Audience Score : 72
+IMDB Rating : 7.4
+
+So, our actual value of `score` = ( 96 + 72 + 7.4*10 ) / 3 = 80.67
+
+Now, we will use predict function get the predicted score using the model.
+
+```{r}
+data_instance <- data.frame(best_pic_nom="no",best_dir_win="no",top200_box="no",runtime=115,best_actor_win="no")
+predict(model,data_instance,interval="prediction",level=0.95)
+```
+
+Here, we have quantified the uncertainty around the prediction by means of a prediction interval. Now this signifies that, we are 95% confident that any movie produced with the same settings as *Paterson* will have its `score` between `27.57` and `96.49`.
+
+Now of course in order to have better certainty we always try to achieve a narrower prediction interval. But here, the interval we have got to see is very wide. This can be directly attributed to the low predictive power of the model itself.
+
+* * *
+
+## Part 6: Conclusion
+
+In this study, our initial aim was to look for attributes that strongly influence rating or score of a particular movie. From that aspect our study has not been that fruitful as the set of attributes we have chosen here to predict the score of a movie, does not strongly influence it. We have also observed that the model we have created here using linear regression does not satisfy some of the basic criteria namely, linear relationship between numerical x and y, constant variability of the residuals. As a result this has led to very weak predictive power of the model.
+
+This deviation from the expected outcome is primarily because,  
+
+1. For the categorical attributes that we have chosen namely, whether or not a picture has received nominations for Oscar or whether the picture has been directed by an academy award winner director etc. has shown high variability for category `no`. In our exploratory data analysis plots we have observed the fact that, in reality it is not so uncommon to find a movie which has not been nominated for an oscar but has received higher rating than any other oscar nominated movie. 
+
+2. With the available list of attributes, we were not able to find out strong influencers of response variable. Most of the attributes that were present in the dataset were either having no association with the rating or we observed a very mild correlation. This was not really supportive while modelling this data by means of linear regression.
+
+3. Last but not the least, the study might have been successful if we would have used any model other than linear regression.
+
+Clearly, we can conclude that a linear model is not sufficient to answer our research question. If given a chance, we will look forward using advanced data modelling techniques to overcome this shortcomings.
+
+[^1]: The data for this movie has been obtained from <https://www.imdb.com/title/tt5247022/> and <https://www.rottentomatoes.com/m/paterson>
